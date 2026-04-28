@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import OpenAI from "openai";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { analyses, paymentSessions } from "../../drizzle/schema";
+import { analyses } from "../../drizzle/schema";
 
 // ─── OpenAI Client ────────────────────────────────────────────────────────────
 function getOpenAI() {
@@ -18,7 +18,7 @@ async function runFullAnalysis(resumeText: string, jobDescription: string) {
   const openai = getOpenAI();
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -87,7 +87,7 @@ async function generateOptimizedResume(
   const improvementsList = suggestions.map((s) => `- [${s.section}] ${s.suggestion}`).join("\n");
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -145,8 +145,11 @@ export const resumeRouter = router({
       }
     }),
 
-  /** Step 1: Save resume+JD draft, return accessToken for checkout */
-  createDraft: publicProcedure
+  /**
+   * Main analyze procedure — NO payment required (test mode).
+   * Saves draft, runs AI analysis immediately, returns accessToken.
+   */
+  analyze: publicProcedure
     .input(
       z.object({
         resumeText: z.string().min(50, "Resume must be at least 50 characters"),
@@ -160,6 +163,7 @@ export const resumeRouter = router({
       const accessToken = nanoid(32);
       const userId = ctx.user?.id ?? null;
 
+      // Save draft
       const [result] = await db
         .insert(analyses)
         .values({
@@ -167,48 +171,18 @@ export const resumeRouter = router({
           accessToken,
           resumeText: input.resumeText,
           jobDescription: input.jobDescription,
-          status: "pending",
+          status: "processing",
         })
         .$returningId();
 
-      return { analysisId: result.id, accessToken };
-    }),
-
-  /** Step 3: Run AI analysis — called after payment confirmed */
-  runAnalysis: publicProcedure
-    .input(z.object({ accessToken: z.string() }))
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database unavailable");
-
-      const [analysis] = await db
-        .select()
-        .from(analyses)
-        .where(eq(analyses.accessToken, input.accessToken))
-        .limit(1);
-
-      if (!analysis) throw new Error("Analysis not found");
-      if (analysis.status === "done") return { status: "done" as const };
-      if (analysis.status === "processing") return { status: "processing" as const };
-
-      // Verify payment
-      const [payment] = await db
-        .select()
-        .from(paymentSessions)
-        .where(eq(paymentSessions.analysisId, analysis.id))
-        .limit(1);
-
-      if (!payment || payment.status !== "paid") {
-        throw new Error("Payment not confirmed");
-      }
-
-      await db.update(analyses).set({ status: "processing" }).where(eq(analyses.id, analysis.id));
+      const analysisId = result.id;
 
       try {
-        const full = await runFullAnalysis(analysis.resumeText, analysis.jobDescription);
+        // Run AI analysis (no payment gate)
+        const full = await runFullAnalysis(input.resumeText, input.jobDescription);
         const optimizedResume = await generateOptimizedResume(
-          analysis.resumeText,
-          analysis.jobDescription,
+          input.resumeText,
+          input.jobDescription,
           full.missingKeywords,
           full.suggestions.map((s) => ({ section: s.section, suggestion: s.suggestion }))
         );
@@ -224,11 +198,11 @@ export const resumeRouter = router({
             optimizedResume,
             status: "done",
           })
-          .where(eq(analyses.id, analysis.id));
+          .where(eq(analyses.id, analysisId));
 
-        return { status: "done" as const };
+        return { accessToken, status: "done" as const };
       } catch (err) {
-        await db.update(analyses).set({ status: "failed" }).where(eq(analyses.id, analysis.id));
+        await db.update(analyses).set({ status: "failed" }).where(eq(analyses.id, analysisId));
         throw err;
       }
     }),
@@ -258,34 +232,6 @@ export const resumeRouter = router({
         suggestions: analysis.suggestions,
         optimizedResume: analysis.optimizedResume,
         createdAt: analysis.createdAt,
-      };
-    }),
-
-  /** Check payment status */
-  checkPayment: publicProcedure
-    .input(z.object({ accessToken: z.string() }))
-    .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("Database unavailable");
-
-      const [analysis] = await db
-        .select()
-        .from(analyses)
-        .where(eq(analyses.accessToken, input.accessToken))
-        .limit(1);
-
-      if (!analysis) throw new Error("Analysis not found");
-
-      const [payment] = await db
-        .select()
-        .from(paymentSessions)
-        .where(eq(paymentSessions.analysisId, analysis.id))
-        .limit(1);
-
-      return {
-        analysisStatus: analysis.status,
-        paymentStatus: payment?.status ?? "pending",
-        checkoutUrl: payment?.checkoutUrl ?? null,
       };
     }),
 });

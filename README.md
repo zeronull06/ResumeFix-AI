@@ -1,8 +1,8 @@
 # ResumeFix AI
 
-AI-powered resume optimizer — analyzes your resume against a job description, gives an ATS score, identifies missing keywords, and generates an optimized version powered by OpenAI GPT-4o.
+AI-powered resume optimizer — analyzes your resume against a job description, gives an ATS score, identifies missing keywords, and generates a fully rewritten optimized resume ready to download as PDF.
 
-**Price:** $6.99 per analysis (one-time payment via Lemon Squeezy)
+> **Current mode:** Payment disabled for testing. Upload resume + JD → get full results instantly.
 
 ---
 
@@ -13,8 +13,8 @@ AI-powered resume optimizer — analyzes your resume against a job description, 
 | Frontend | React 19 + Vite + Tailwind CSS 4 |
 | Backend | Express.js + tRPC 11 |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
-| AI | OpenAI GPT-4o |
-| Payments | Lemon Squeezy (Merchant of Record — handles all global taxes) |
+| AI | OpenAI GPT-4o-mini |
+| Payments | Lemon Squeezy (Merchant of Record — disabled for testing) |
 | Auth | Manus OAuth |
 | Deployment | Vercel |
 
@@ -23,10 +23,11 @@ AI-powered resume optimizer — analyzes your resume against a job description, 
 ## User Flow
 
 1. User uploads resume (PDF or paste text) + pastes Job Description
-2. System saves a draft and redirects to Lemon Squeezy checkout ($6.99)
-3. After payment, Lemon Squeezy sends `order_created` webhook
-4. Frontend polls for payment confirmation, then triggers GPT-4o analysis
-5. Results page shows: ATS Score, Score Breakdown, Missing Keywords, Improvement Suggestions, Optimized Resume
+2. GPT-4o-mini analyzes resume vs JD (15–25 seconds)
+3. Results page shows: ATS Score, Score Breakdown, Missing Keywords, Improvement Suggestions, Optimized Resume
+4. User can **Download PDF** or **Copy Markdown** of the optimized resume
+
+> To re-enable payment: see the Lemon Squeezy section below.
 
 ---
 
@@ -51,10 +52,10 @@ Required variables:
 | `DATABASE_URL` | Supabase Dashboard → Settings → Database → Connection string (Transaction pooler, port 6543) |
 | `JWT_SECRET` | Any random string, min 32 chars |
 | `OPENAI_API_KEY` | platform.openai.com/api-keys |
-| `LEMONSQUEEZY_API_KEY` | app.lemonsqueezy.com/settings/api |
-| `LEMONSQUEEZY_STORE_ID` | Lemon Squeezy Dashboard → Stores |
-| `LEMONSQUEEZY_VARIANT_ID` | Lemon Squeezy → Products → Variants |
-| `LEMONSQUEEZY_WEBHOOK_SECRET` | Set when creating webhook in Lemon Squeezy |
+| `LEMONSQUEEZY_API_KEY` | (optional) app.lemonsqueezy.com/settings/api |
+| `LEMONSQUEEZY_STORE_ID` | (optional) Lemon Squeezy Dashboard → Stores |
+| `LEMONSQUEEZY_VARIANT_ID` | (optional) Lemon Squeezy → Products → Variants |
+| `LEMONSQUEEZY_WEBHOOK_SECRET` | (optional) Set when creating webhook in Lemon Squeezy |
 
 ### 3. Database Migration
 
@@ -88,7 +89,7 @@ pnpm dev
 3. Add all environment variables in Vercel → Settings → Environment Variables
 4. Deploy
 
-> **Note:** Vercel Pro plan recommended (60s function timeout) for GPT-4o analysis to complete reliably.
+> **Note:** GPT-4o-mini typically responds in 8–12 seconds. Vercel Hobby (10s timeout) may occasionally timeout on complex resumes. Vercel Pro (60s) is recommended for production.
 
 ---
 

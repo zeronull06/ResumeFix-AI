@@ -72,3 +72,11 @@
 - [x] Update ResultsPage.tsx - remove all free/paid gating, always show full results
 - [x] Write tests for new payment flow
 - [x] Save checkpoint
+
+## Phase 9: No-Payment Test Mode + PDF + UI Redesign
+- [ ] Bypass payment in backend — analyze immediately without checkout
+- [ ] Switch model from gpt-4o to gpt-4o-mini
+- [ ] Add PDF generation endpoint
+- [ ] Redesign ResultsPage to side-by-side layout (ATS left, Resume right)
+- [ ] Add Download PDF button
+- [ ] Push to GitHub

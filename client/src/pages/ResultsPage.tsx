@@ -1,488 +1,276 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
-import { Streamdown } from "streamdown";
 import {
-  ArrowLeft,
-  Copy,
-  Download,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Zap,
-  Target,
-  TrendingUp,
-  Sparkles,
-  Clock,
-  RefreshCw,
+  Download, Copy, ArrowLeft, Sparkles, CheckCircle,
+  AlertCircle, TrendingUp, Loader2, RefreshCw,
 } from "lucide-react";
 
-// ─── Score helpers ────────────────────────────────────────────────────────────
-function getScoreColor(score: number) {
-  if (score >= 80) return "oklch(0.48 0.16 155)";
-  if (score >= 60) return "oklch(0.60 0.14 155)";
-  if (score >= 40) return "oklch(0.65 0.16 75)";
-  return "oklch(0.50 0.20 25)";
+// ─── PDF Download via browser print ──────────────────────────────────────────
+async function downloadAsPdf(markdownContent: string) {
+  const { marked } = await import("marked");
+  const html = await marked(markdownContent);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) { toast.error("Please allow popups to download PDF"); return; }
+  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Optimized Resume</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Georgia,serif;font-size:11pt;line-height:1.55;color:#1a1a1a;padding:2.5cm;max-width:21cm;margin:0 auto}
+h1{font-size:20pt;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4pt}
+h2{font-size:10pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1.5px solid #1a7a4a;padding-bottom:3pt;margin-top:14pt;margin-bottom:6pt}
+h3{font-size:11pt;font-weight:700;margin-top:8pt;margin-bottom:2pt}
+p{margin-bottom:5pt;color:#333}ul{padding-left:16pt;margin-bottom:6pt}li{margin-bottom:3pt;color:#333}
+strong{font-weight:700}@media print{body{padding:0}@page{margin:2cm}}</style></head>
+<body>${html}<script>window.onload=function(){setTimeout(function(){window.print();window.close();},300);}</script></body></html>`);
+  printWindow.document.close();
 }
 
-function getScoreLabel(score: number) {
-  if (score >= 80) return "Strong Match";
-  if (score >= 60) return "Moderate Match";
-  if (score >= 40) return "Weak Match";
-  return "Poor Match";
-}
-
-function getScoreTextClass(score: number) {
-  if (score >= 80) return "score-excellent";
-  if (score >= 60) return "score-good";
-  if (score >= 40) return "score-average";
-  return "score-poor";
-}
-
-function getPriorityClass(priority: string) {
-  switch (priority.toLowerCase()) {
-    case "high": return "bg-destructive/10 text-destructive";
-    case "medium": return "bg-chart-5/10 text-chart-5";
-    default: return "bg-secondary/10 text-secondary";
-  }
-}
-
-// ─── Score Gauge ─────────────────────────────────────────────────────────────
-function ScoreGauge({ score }: { score: number }) {
-  const radius = 56;
+// ─── Score Circle ─────────────────────────────────────────────────────────────
+function ScoreCircle({ score }: { score: number }) {
+  const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const filled = (score / 100) * circumference;
-
+  const progress = (score / 100) * circumference;
+  const color = score >= 80 ? "#1a7a4a" : score >= 60 ? "#f59e0b" : "#ef4444";
+  const label = score >= 80 ? "High Match" : score >= 60 ? "Moderate Match" : "Low Match";
   return (
-    <div className="relative w-40 h-40 mx-auto">
-      <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
-        <circle cx="70" cy="70" r={radius} fill="none" stroke="oklch(0.93 0.003 240)" strokeWidth="12" />
-        <motion.circle
-          cx="70" cy="70" r={radius} fill="none"
-          stroke={getScoreColor(score)} strokeWidth="12"
-          strokeLinecap="round"
-          strokeDasharray={`${filled} ${circumference - filled}`}
-          initial={{ strokeDasharray: `0 ${circumference}` }}
-          animate={{ strokeDasharray: `${filled} ${circumference - filled}` }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <motion.span
-          className={`text-4xl font-extrabold ${getScoreTextClass(score)}`}
-          style={{ fontFamily: "'Manrope', sans-serif" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
-          {score}
-        </motion.span>
-        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">ATS Score</span>
+    <div className="flex flex-col items-center gap-3">
+      <div className="relative w-36 h-36">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 128 128">
+          <circle cx="64" cy="64" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="10" />
+          <circle cx="64" cy="64" r={radius} fill="none" stroke={color} strokeWidth="10"
+            strokeDasharray={circumference} strokeDashoffset={circumference - progress}
+            strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s ease" }} />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-3xl font-bold text-gray-900">{score}%</span>
+          <span className="text-xs text-gray-500 font-medium">ATS SCORE</span>
+        </div>
+      </div>
+      <span className="text-xs font-semibold px-3 py-1 rounded-full border"
+        style={{ backgroundColor: `${color}20`, color, borderColor: `${color}40` }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  const color = value >= 80 ? "#1a7a4a" : value >= 60 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-gray-600">
+        <span>{label}</span><span className="font-semibold">{value}%</span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${value}%`, backgroundColor: color }} />
       </div>
     </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+function renderInline(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code style='background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:0.85em'>$1</code>");
+}
+
+function ResumePreview({ markdown, keywords }: { markdown: string; keywords: string[] }) {
+  const highlight = (text: string) => {
+    if (!keywords.length) return text;
+    const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    return text.replace(new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
+      `<mark style="background:#1a7a4a20;color:#1a7a4a;padding:0 2px;border-radius:3px;font-weight:600">$1</mark>`);
+  };
+  return (
+    <div className="font-serif text-gray-800 leading-relaxed text-sm space-y-1">
+      {markdown.split("\n").map((line, i) => {
+        if (line.startsWith("# ")) return <h1 key={i} className="text-xl font-bold text-center text-gray-900 uppercase tracking-wide mb-1">{line.slice(2)}</h1>;
+        if (line.startsWith("## ")) return <h2 key={i} className="text-xs font-bold uppercase tracking-widest text-gray-900 border-b border-[#1a7a4a] pb-1 mt-4 mb-2">{line.slice(3)}</h2>;
+        if (line.startsWith("### ")) return <h3 key={i} className="font-bold text-gray-900 text-sm mt-2">{line.slice(4)}</h3>;
+        if (line.startsWith("- ") || line.startsWith("* ")) return (
+          <div key={i} className="flex gap-2 ml-4">
+            <span className="text-gray-400 mt-0.5 shrink-0">•</span>
+            <p className="text-gray-700 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: highlight(renderInline(line.slice(2))) }} />
+          </div>
+        );
+        if (line.trim() === "") return <div key={i} className="h-1" />;
+        return <p key={i} className="text-gray-700 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: highlight(renderInline(line)) }} />;
+      })}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ResultsPage() {
-  const params = useParams<{ accessToken: string }>();
-  const accessToken = params.accessToken;
+  const { accessToken } = useParams<{ accessToken: string }>();
   const [, navigate] = useLocation();
-  const [copied, setCopied] = useState(false);
-  const [pollingEnabled, setPollingEnabled] = useState(true);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
 
-  const runAnalysisMutation = trpc.resume.runAnalysis.useMutation();
-
-  const { data: result, refetch: refetchResult } = trpc.resume.getResult.useQuery(
+  const { data, isLoading, error } = trpc.resume.getResult.useQuery(
     { accessToken: accessToken ?? "" },
-    { enabled: !!accessToken, refetchInterval: pollingEnabled ? 3000 : false }
+    { enabled: !!accessToken, retry: 2 }
   );
-
-  const { data: paymentData, refetch: refetchPayment } = trpc.resume.checkPayment.useQuery(
-    { accessToken: accessToken ?? "" },
-    { enabled: !!accessToken, refetchInterval: pollingEnabled ? 3000 : false }
-  );
-
-  useEffect(() => {
-    if (!paymentData || !result) return;
-
-    if (paymentData.paymentStatus === "paid" && result.status === "pending") {
-      runAnalysisMutation.mutate(
-        { accessToken: accessToken ?? "" },
-        {
-          onSuccess: () => void refetchResult(),
-          onError: (err) => toast.error(err.message),
-        }
-      );
-    }
-
-    if (result.status === "done" || result.status === "failed") {
-      setPollingEnabled(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentData?.paymentStatus, result?.status]);
 
   const handleCopy = () => {
-    if (!result?.optimizedResume) return;
-    void navigator.clipboard.writeText(result.optimizedResume);
-    setCopied(true);
-    toast.success("Copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
+    if (!data?.optimizedResume) return;
+    navigator.clipboard.writeText(data.optimizedResume as string);
+    toast.success("Copied to clipboard!");
   };
 
-  const handleDownload = () => {
-    if (!result?.optimizedResume) return;
-    const blob = new Blob([result.optimizedResume], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "optimized-resume.md";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Downloaded as Markdown");
+  const handleDownloadPdf = async () => {
+    if (!data?.optimizedResume) return;
+    setIsPdfLoading(true);
+    try { await downloadAsPdf(data.optimizedResume as string); }
+    catch { toast.error("Failed to generate PDF"); }
+    finally { setIsPdfLoading(false); }
   };
 
-  // Loading
-  if (!result || !paymentData) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 text-secondary animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground text-sm">Loading your analysis...</p>
-        </div>
+  if (isLoading) return (
+    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <Loader2 className="w-10 h-10 animate-spin text-[#1a7a4a] mx-auto" />
+        <p className="text-gray-600 font-medium">Loading your results...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Waiting for payment
-  if (paymentData.paymentStatus !== "paid") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-card border border-border rounded-2xl p-10 max-w-md w-full text-center card-shadow-lg"
-        >
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-6">
-            <Clock className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <h2 className="text-2xl font-bold text-primary mb-3" style={{ fontFamily: "'Manrope', sans-serif" }}>
-            Waiting for payment
-          </h2>
-          <p className="text-muted-foreground text-sm mb-6">
-            Complete your payment to unlock the full analysis. This page will update automatically.
-          </p>
-          <div className="flex gap-3 justify-center">
-            {paymentData.checkoutUrl && (
-              <Button
-                onClick={() => { window.location.href = paymentData.checkoutUrl!; }}
-                className="bg-secondary text-secondary-foreground hover:opacity-90 font-semibold"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                Complete Payment — $6.99
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => { void refetchPayment(); void refetchResult(); }}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">Already paid? Click Refresh or wait a few seconds.</p>
-        </motion.div>
+  if (error || !data) return (
+    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+      <div className="text-center space-y-4 max-w-sm">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+        <h2 className="text-xl font-bold text-gray-900">Results Not Found</h2>
+        <p className="text-gray-500 text-sm">This analysis may have expired or the link is invalid.</p>
+        <Button onClick={() => navigate("/analyze")} className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white">
+          Start New Analysis
+        </Button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Processing
-  if (result.status === "processing" || result.status === "pending") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-card border border-border rounded-2xl p-10 max-w-md w-full text-center card-shadow-lg"
-        >
-          <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center mx-auto mb-6">
-            <Sparkles className="w-8 h-8 text-secondary animate-pulse" />
-          </div>
-          <h2 className="text-2xl font-bold text-primary mb-3" style={{ fontFamily: "'Manrope', sans-serif" }}>
-            AI is analyzing your resume
-          </h2>
-          <p className="text-muted-foreground text-sm mb-6">
-            GPT-4o is reading your resume and job description. This usually takes 15–30 seconds.
-          </p>
-          <div className="flex justify-center gap-2 mb-4">
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                className="h-1.5 w-16 rounded-full bg-secondary/20"
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.5 }}
-              />
-            ))}
-          </div>
-          <Loader2 className="w-6 h-6 text-secondary animate-spin mx-auto" />
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Failed
-  if (result.status === "failed") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <div className="bg-card border border-destructive/30 rounded-2xl p-10 max-w-md w-full text-center card-shadow">
-          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-primary mb-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
-            Analysis failed
-          </h2>
-          <p className="text-muted-foreground text-sm mb-4">
-            Something went wrong. Please contact support with your token below.
-          </p>
-          <p className="text-xs font-mono bg-muted p-2 rounded text-muted-foreground mb-6 break-all">{accessToken}</p>
-          <Button onClick={() => navigate("/")} variant="outline">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Results ───────────────────────────────────────────────────────────────
-  const { atsScore, scoreBreakdown, summary, missingKeywords, suggestions, optimizedResume } = result;
+  const scoreBreakdown = data.scoreBreakdown as { keywordMatch: number; experienceRelevance: number; educationMatch: number; structureScore: number } | null;
+  const missingKeywords = (data.missingKeywords as string[]) ?? [];
+  const suggestions = (data.suggestions as { section: string; issue: string; suggestion: string; priority: string }[]) ?? [];
 
   return (
-    <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <header className="glass border-b border-border/50 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
-          <button
-            onClick={() => navigate("/")}
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">New Analysis</span>
+    <div className="min-h-screen bg-[#f8f9fa]">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <button onClick={() => navigate("/analyze")} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors text-sm">
+            <ArrowLeft className="w-4 h-4" /> New Analysis
           </button>
-          <div className="text-lg font-extrabold text-primary tracking-tighter" style={{ fontFamily: "'Manrope', sans-serif" }}>
-            ResumeFix AI
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-[#1a7a4a] rounded-lg flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-bold text-gray-900">ResumeAI Optimizer</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-secondary font-semibold">
-            <CheckCircle className="w-3.5 h-3.5" />
-            Analysis Complete
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleCopy} className="text-xs border-gray-200">
+              <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy Markdown
+            </Button>
+            <Button size="sm" onClick={handleDownloadPdf} disabled={isPdfLoading} className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white text-xs">
+              {isPdfLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+              Download PDF
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <AnimatePresence>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            {/* Score row */}
-            <div className="grid lg:grid-cols-3 gap-6 mb-8">
-              <div className="bg-card border border-border rounded-2xl p-6 text-center card-shadow">
-                <ScoreGauge score={atsScore ?? 0} />
-                <h3
-                  className={`text-lg font-bold mt-4 ${getScoreTextClass(atsScore ?? 0)}`}
-                  style={{ fontFamily: "'Manrope', sans-serif" }}
-                >
-                  {getScoreLabel(atsScore ?? 0)}
-                </h3>
-                {summary && <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{summary}</p>}
-              </div>
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
 
-              <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 card-shadow">
-                <h3 className="text-sm font-bold text-primary mb-5 flex items-center gap-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                  <Target className="w-4 h-4 text-secondary" />
-                  Score Breakdown
-                </h3>
-                <div className="space-y-4">
-                  {scoreBreakdown && Object.entries({
-                    "Keyword Match": scoreBreakdown.keywordMatch,
-                    "Experience Relevance": scoreBreakdown.experienceRelevance,
-                    "Education Match": scoreBreakdown.educationMatch,
-                    "Structure & Format": scoreBreakdown.structureScore,
-                  }).map(([label, value]) => (
-                    <div key={label}>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-muted-foreground font-medium">{label}</span>
-                        <span className={`font-bold ${getScoreTextClass(value)}`}>{value}</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ backgroundColor: getScoreColor(value) }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${value}%` }}
-                          transition={{ duration: 0.8, ease: "easeOut" }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          {/* ── Left Panel ── */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#1a7a4a]" /> ATS Compatibility
+              </h2>
+              <div className="flex justify-center mb-4">
+                <ScoreCircle score={data.atsScore ?? 0} />
               </div>
+              {data.summary && <p className="text-sm text-gray-600 text-center leading-relaxed">{data.summary as string}</p>}
             </div>
 
-            {/* Tabs */}
-            <Tabs defaultValue="keywords" className="w-full">
-              <TabsList className="bg-muted border border-border mb-6 w-full sm:w-auto">
-                <TabsTrigger value="keywords" className="text-xs flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5" />
-                  Missing Keywords
-                  {missingKeywords && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-destructive/10 text-destructive rounded-full text-[10px] font-bold">
-                      {missingKeywords.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="suggestions" className="text-xs flex items-center gap-1.5">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  Suggestions
-                  {suggestions && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-secondary/10 text-secondary rounded-full text-[10px] font-bold">
-                      {suggestions.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="optimized" className="text-xs flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Optimized Resume
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="keywords">
-                <div className="bg-card border border-border rounded-2xl p-6 card-shadow">
-                  <h3 className="text-sm font-bold text-primary mb-4 flex items-center gap-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                    <Zap className="w-4 h-4 text-secondary" />
-                    Missing Keywords & Skills
-                  </h3>
-                  {missingKeywords && missingKeywords.length > 0 ? (
-                    <>
-                      <p className="text-xs text-muted-foreground mb-4">
-                        These {missingKeywords.length} keywords appear in the job description but are missing from your resume.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {missingKeywords.map((kw) => (
-                          <motion.span
-                            key={kw}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="px-3 py-1.5 bg-destructive/10 text-destructive rounded-full text-sm font-medium border border-destructive/20 flex items-center gap-1.5"
-                          >
-                            <span className="text-xs">✕</span>
-                            {kw}
-                          </motion.span>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-10 h-10 text-secondary mx-auto mb-3" />
-                      <p className="text-sm font-semibold text-foreground">Great keyword coverage!</p>
-                    </div>
-                  )}
+            {scoreBreakdown && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                <h3 className="font-semibold text-gray-900 mb-4 text-sm">Score Breakdown</h3>
+                <div className="space-y-3">
+                  <ScoreBar label="Keyword Match" value={scoreBreakdown.keywordMatch} />
+                  <ScoreBar label="Experience Relevance" value={scoreBreakdown.experienceRelevance} />
+                  <ScoreBar label="Education Match" value={scoreBreakdown.educationMatch} />
+                  <ScoreBar label="Structure & Format" value={scoreBreakdown.structureScore} />
                 </div>
-              </TabsContent>
+              </div>
+            )}
 
-              <TabsContent value="suggestions">
-                <div className="bg-card border border-border rounded-2xl p-6 card-shadow">
-                  <h3 className="text-sm font-bold text-primary mb-4 flex items-center gap-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                    <TrendingUp className="w-4 h-4 text-secondary" />
-                    Improvement Suggestions
-                  </h3>
-                  {suggestions && suggestions.length > 0 ? (
-                    <div className="space-y-4">
-                      {suggestions.map((s, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.08 }}
-                          className="border border-border rounded-xl p-4 hover:border-secondary/30 transition-colors"
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-secondary bg-accent px-2 py-0.5 rounded-full">
-                              {s.section}
-                            </span>
-                            {"priority" in s && (
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${getPriorityClass((s as { priority: string }).priority)}`}>
-                                {(s as { priority: string }).priority}
-                              </span>
-                            )}
-                          </div>
-                          {"issue" in s && (s as { issue: string }).issue && (
-                            <p className="text-xs text-muted-foreground mb-2 flex items-start gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-destructive" />
-                              {(s as { issue: string }).issue}
-                            </p>
-                          )}
-                          <p className="text-sm text-foreground flex items-start gap-1.5">
-                            <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-secondary" />
-                            {s.suggestion}
-                          </p>
-                        </motion.div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-10 h-10 text-secondary mx-auto mb-3" />
-                      <p className="text-sm font-semibold text-foreground">Your resume looks solid!</p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="optimized">
-                <div className="bg-card border border-border rounded-2xl p-6 card-shadow">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-primary flex items-center gap-2" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                      <Sparkles className="w-4 h-4 text-secondary" />
-                      AI-Optimized Resume
-                    </h3>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={handleCopy} className="text-xs" disabled={!optimizedResume}>
-                        {copied ? (
-                          <><CheckCircle className="w-3.5 h-3.5 mr-1.5 text-secondary" />Copied</>
-                        ) : (
-                          <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Markdown</>
-                        )}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={handleDownload} className="text-xs" disabled={!optimizedResume}>
-                        <Download className="w-3.5 h-3.5 mr-1.5" />
-                        Download
-                      </Button>
-                    </div>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4 text-sm">Post-Optimization Details</h3>
+              {missingKeywords.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Missing Keywords Added</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {missingKeywords.map((kw) => (
+                      <span key={kw} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium"
+                        style={{ backgroundColor: "#1a7a4a15", color: "#1a7a4a", border: "1px solid #1a7a4a30" }}>
+                        {kw} <CheckCircle className="w-3 h-3" />
+                      </span>
+                    ))}
                   </div>
-                  {optimizedResume ? (
-                    <div className="bg-muted rounded-xl p-5 border border-border max-h-[600px] overflow-y-auto">
-                      <div className="prose prose-sm max-w-none text-foreground">
-                        <Streamdown>{optimizedResume}</Streamdown>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Loader2 className="w-8 h-8 text-secondary animate-spin mx-auto mb-3" />
-                      <p className="text-sm text-muted-foreground">Generating optimized resume...</p>
-                    </div>
-                  )}
                 </div>
-              </TabsContent>
-            </Tabs>
-
-            <div className="mt-8 text-center">
-              <p className="text-sm text-muted-foreground mb-3">Want to analyze another resume?</p>
-              <Button
-                onClick={() => navigate("/analyze")}
-                className="bg-secondary text-secondary-foreground hover:opacity-90 font-semibold"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                New Analysis — $6.99
-              </Button>
+              )}
+              {suggestions.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Structural Tips Applied</p>
+                  <div className="space-y-2">
+                    {suggestions.slice(0, 4).map((s, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-[#1a7a4a] mt-0.5 shrink-0" />
+                        <p className="text-xs text-gray-600 leading-relaxed">{s.suggestion}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </motion.div>
-        </AnimatePresence>
+
+            <Button variant="outline" className="w-full border-gray-200 text-gray-600 hover:text-gray-900 text-sm" onClick={() => navigate("/analyze")}>
+              <RefreshCw className="w-4 h-4 mr-2" /> Analyze Another Resume
+            </Button>
+          </div>
+
+          {/* ── Right Panel: Optimized Resume ── */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-gray-900">Your Optimized Resume</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Ready for download and application</p>
+              </div>
+              <div className="hidden md:flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleCopy} className="text-xs border-gray-200">
+                  <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy Markdown
+                </Button>
+                <Button size="sm" onClick={handleDownloadPdf} disabled={isPdfLoading} className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white text-xs">
+                  {isPdfLoading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+            <div className="p-6 overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
+              <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-inner min-h-[600px]">
+                {data.optimizedResume ? (
+                  <ResumePreview markdown={data.optimizedResume as string} keywords={missingKeywords} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <p>No optimized resume generated</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+        </div>
       </main>
     </div>
   );
