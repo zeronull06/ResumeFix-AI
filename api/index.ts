@@ -6,12 +6,12 @@ import { registerOAuthRoutes } from "../server/_core/oauth";
 import { registerStorageProxy } from "../server/_core/storageProxy";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
-import { registerStripeWebhook } from "../server/webhooks/stripe";
+import { registerPaddleWebhook } from "../server/webhooks/paddle";
 
 const app = express();
 
 // Webhook route: capture raw body BEFORE json parsing (needed for signature verification)
-app.use("/api/stripe/webhook", (req, _res, next) => {
+app.use("/api/paddle/webhook", (req, _res, next) => {
   const chunks: Buffer[] = [];
   req.on("data", (chunk: Buffer) => chunks.push(chunk));
   req.on("end", () => {
@@ -27,7 +27,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 registerStorageProxy(app);
 registerOAuthRoutes(app);
-registerStripeWebhook(app);
+registerPaddleWebhook(app);
 
 // Health check
 app.get("/api/health", (_req, res) => {

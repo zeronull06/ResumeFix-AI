@@ -1,55 +1,63 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import Stripe from "stripe";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { analyses, paymentSessions } from "../../drizzle/schema";
 
-// Stripe Client
-function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) throw new Error("STRIPE_SECRET_KEY is not configured");
-  return new Stripe(secretKey, { apiVersion: "2024-04-10" });
+// Paddle Billing API base URL
+const PADDLE_API_URL = "https://api.paddle.com";
+
+function getPaddleHeaders() {
+  const apiKey = process.env.PADDLE_API_KEY;
+  if (!apiKey) throw new Error("PADDLE_API_KEY is not configured");
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
 }
 
-// Create Checkout Session
-export async function createStripeCheckout(
+// Create Paddle checkout transaction
+export async function createPaddleCheckout(
   analysisId: number,
   accessToken: string,
   origin: string,
   userEmail?: string
 ): Promise<string> {
-  const stripe = getStripe();
-  const successUrl = `${origin}/results/${accessToken}?payment=success`;
-  const cancelUrl = `${origin}/analyze?payment=cancelled`;
+  const priceId = process.env.PADDLE_PRICE_ID;
+  if (!priceId) throw new Error("PADDLE_PRICE_ID is not configured");
 
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    customer_email: userEmail,
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "Optimized Resume",
-            description: "AI-powered resume optimization with ATS analysis",
-          },
-          unit_amount: 699,
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    metadata: {
+  const successUrl = `${origin}/results/${accessToken}?payment=success`;
+
+  const body = {
+    items: [{ price_id: priceId, quantity: 1 }],
+    customer: userEmail ? { email: userEmail } : undefined,
+    custom_data: {
       analysis_id: String(analysisId),
       access_token: accessToken,
     },
+    settings: {
+      success_url: successUrl,
+      display_mode: "redirect",
+      theme: "light",
+    },
+  };
+
+  const response = await fetch(`${PADDLE_API_URL}/transactions`, {
+    method: "POST",
+    headers: getPaddleHeaders(),
+    body: JSON.stringify(body),
   });
 
-  if (!session.url) throw new Error("Failed to create Stripe checkout session");
-  return session.url;
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Paddle checkout failed: ${err}`);
+  }
+
+  const data = await response.json() as {
+    data: { checkout: { url: string } };
+  };
+
+  return data.data.checkout.url;
 }
 
 // tRPC Router
@@ -84,7 +92,7 @@ export const paymentRouter = router({
         return { checkoutUrl: null, alreadyPaid: true };
       }
 
-      const checkoutUrl = await createStripeCheckout(
+      const checkoutUrl = await createPaddleCheckout(
         analysis.id,
         input.accessToken,
         input.origin,
@@ -94,12 +102,12 @@ export const paymentRouter = router({
       if (existing) {
         await db
           .update(paymentSessions)
-          .set({ stripeCheckoutUrl: checkoutUrl })
+          .set({ checkoutUrl })
           .where(eq(paymentSessions.id, existing.id));
       } else {
         await db.insert(paymentSessions).values({
           analysisId: analysis.id,
-          stripeCheckoutUrl: checkoutUrl,
+          checkoutUrl,
           status: "pending",
         });
       }

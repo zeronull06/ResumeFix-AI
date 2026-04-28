@@ -144,7 +144,7 @@ export default function AnalyzePage() {
           </a>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <CreditCard className="w-4 h-4" />
-            <span>Secure payment · $6.99</span>
+            <span>Secure payment via Paddle · $6.99</span>
           </div>
         </div>
       </header>
@@ -289,7 +289,7 @@ export default function AnalyzePage() {
               )}
             </Button>
           </div>
-          <p className="text-xs text-gray-400">Free: Get ATS score & feedback · Paid: Get AI-optimized resume ready to submit</p>
+          <p className="text-xs text-gray-400">Free: Get ATS score &amp; feedback · Paid ($6.99): Get AI-optimized resume via Paddle</p>
         </div>
       </main>
     </div>

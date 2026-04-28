@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { registerStripeWebhook } from "../webhooks/stripe";
+import { registerPaddleWebhook } from "../webhooks/paddle";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -32,8 +32,8 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  // For Stripe webhook: capture raw body BEFORE json parsing (needed for signature verification)
-  app.use("/api/stripe/webhook", (req, _res, next) => {
+  // For Paddle webhook: capture raw body BEFORE json parsing (needed for signature verification)
+  app.use("/api/paddle/webhook", (req, _res, next) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
@@ -48,7 +48,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
-  registerStripeWebhook(app);
+  registerPaddleWebhook(app);
   // Health check endpoint for Railway
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });

@@ -47,11 +47,11 @@ export const analyses = pgTable("analyses", {
 export type Analysis = typeof analyses.$inferSelect;
 export type InsertAnalysis = typeof analyses.$inferInsert;
 
-/** Tracks Lemon Squeezy payment orders */
+/** Tracks Paddle payment orders */
 export const paymentSessions = pgTable("payment_sessions", {
   id: serial("id").primaryKey(),
   analysisId: integer("analysisId").notNull(),
-  lsOrderId: varchar("lsOrderId", { length: 128 }),
+  paddleTransactionId: varchar("lsOrderId", { length: 128 }),
   checkoutUrl: text("checkoutUrl"),
   status: paymentStatusEnum("status").default("pending").notNull(),
   amountCents: integer("amountCents"),
