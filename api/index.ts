@@ -1,5 +1,4 @@
-// Vercel serverless entry point
-// This file wraps the Express app for Vercel deployment
+// Vercel serverless entry point — wraps Express app for Vercel deployment
 import "dotenv/config";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -8,14 +7,10 @@ import { registerStorageProxy } from "../server/_core/storageProxy";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
 import { registerLemonSqueezyWebhook } from "../server/webhooks/lemonsqueezy";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
-// Webhook route: capture raw body BEFORE json parsing
+// Webhook route: capture raw body BEFORE json parsing (needed for signature verification)
 app.use("/api/lemonsqueezy/webhook", (req, _res, next) => {
   const chunks: Buffer[] = [];
   req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -39,6 +34,12 @@ registerStorageProxy(app);
 registerOAuthRoutes(app);
 registerLemonSqueezyWebhook(app);
 
+// Health check
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, timestamp: Date.now() });
+});
+
+// tRPC
 app.use(
   "/api/trpc",
   createExpressMiddleware({
@@ -46,12 +47,5 @@ app.use(
     createContext,
   })
 );
-
-// Serve static files from Vite build
-const distPath = path.join(__dirname, "../dist");
-app.use(express.static(distPath));
-app.get("*", (_req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
 
 export default app;
