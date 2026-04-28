@@ -1,94 +1,65 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import Stripe from "stripe";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { analyses, paymentSessions } from "../../drizzle/schema";
 
-const LS_API_URL = "https://api.lemonsqueezy.com/v1";
-
-function getLSHeaders() {
-  const apiKey = process.env.LEMONSQUEEZY_API_KEY;
-  if (!apiKey) throw new Error("LEMONSQUEEZY_API_KEY is not configured");
-  return {
-    Authorization: `Bearer ${apiKey}`,
-    Accept: "application/vnd.api+json",
-    "Content-Type": "application/vnd.api+json",
-  };
+// Stripe Client
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(secretKey, { apiVersion: "2024-04-10" });
 }
 
-/** Create a Lemon Squeezy checkout URL for a given analysis */
-export async function createLSCheckout(
+// Create Checkout Session
+export async function createStripeCheckout(
   analysisId: number,
   accessToken: string,
-  origin: string
+  origin: string,
+  userEmail?: string
 ): Promise<string> {
-  const storeId = process.env.LEMONSQUEEZY_STORE_ID;
-  const variantId = process.env.LEMONSQUEEZY_VARIANT_ID;
-
-  if (!storeId || !variantId) {
-    throw new Error("Lemon Squeezy STORE_ID or VARIANT_ID not configured");
-  }
-
+  const stripe = getStripe();
   const successUrl = `${origin}/results/${accessToken}?payment=success`;
   const cancelUrl = `${origin}/analyze?payment=cancelled`;
 
-  const body = {
-    data: {
-      type: "checkouts",
-      attributes: {
-        checkout_options: {
-          embed: false,
-          media: false,
-          logo: true,
-        },
-        checkout_data: {
-          custom: {
-            analysis_id: String(analysisId),
-            access_token: accessToken,
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    mode: "payment",
+    customer_email: userEmail,
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: "Optimized Resume",
+            description: "AI-powered resume optimization with ATS analysis",
           },
+          unit_amount: 699,
         },
-        product_options: {
-          redirect_url: successUrl,
-        },
-        expires_at: null,
+        quantity: 1,
       },
-      relationships: {
-        store: {
-          data: { type: "stores", id: storeId },
-        },
-        variant: {
-          data: { type: "variants", id: variantId },
-        },
-      },
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: {
+      analysis_id: String(analysisId),
+      access_token: accessToken,
     },
-  };
-
-  const response = await fetch(`${LS_API_URL}/checkouts`, {
-    method: "POST",
-    headers: getLSHeaders(),
-    body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Lemon Squeezy checkout failed: ${err}`);
-  }
-
-  const data = await response.json() as {
-    data: { attributes: { url: string } };
-  };
-
-  return data.data.attributes.url;
+  if (!session.url) throw new Error("Failed to create Stripe checkout session");
+  return session.url;
 }
 
-// ─── tRPC Router ──────────────────────────────────────────────────────────────
+// tRPC Router
 export const paymentRouter = router({
-  /** Create checkout session and return the Lemon Squeezy checkout URL */
   createCheckout: publicProcedure
     .input(
       z.object({
         accessToken: z.string(),
         origin: z.string().url(),
+        email: z.string().email().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -103,7 +74,6 @@ export const paymentRouter = router({
 
       if (!analysis) throw new Error("Analysis not found");
 
-      // Check if already paid
       const [existing] = await db
         .select()
         .from(paymentSessions)
@@ -114,21 +84,52 @@ export const paymentRouter = router({
         return { checkoutUrl: null, alreadyPaid: true };
       }
 
-      const checkoutUrl = await createLSCheckout(analysis.id, input.accessToken, input.origin);
+      const checkoutUrl = await createStripeCheckout(
+        analysis.id,
+        input.accessToken,
+        input.origin,
+        input.email
+      );
 
       if (existing) {
         await db
           .update(paymentSessions)
-          .set({ checkoutUrl })
+          .set({ stripeCheckoutUrl: checkoutUrl })
           .where(eq(paymentSessions.id, existing.id));
       } else {
         await db.insert(paymentSessions).values({
           analysisId: analysis.id,
-          checkoutUrl,
+          stripeCheckoutUrl: checkoutUrl,
           status: "pending",
         });
       }
 
       return { checkoutUrl, alreadyPaid: false };
+    }),
+
+  checkPayment: publicProcedure
+    .input(z.object({ accessToken: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+
+      const [analysis] = await db
+        .select()
+        .from(analyses)
+        .where(eq(analyses.accessToken, input.accessToken))
+        .limit(1);
+
+      if (!analysis) throw new Error("Analysis not found");
+
+      const [payment] = await db
+        .select()
+        .from(paymentSessions)
+        .where(eq(paymentSessions.analysisId, analysis.id))
+        .limit(1);
+
+      return {
+        paymentStatus: payment?.status ?? "none",
+        analysisStatus: analysis.status,
+      };
     }),
 });

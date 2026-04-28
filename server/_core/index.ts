@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { registerLemonSqueezyWebhook } from "../webhooks/lemonsqueezy";
+import { registerStripeWebhook } from "../webhooks/stripe";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -32,19 +32,13 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  // For webhook route: capture raw body BEFORE json parsing (needed for signature verification)
-  app.use("/api/lemonsqueezy/webhook", (req, _res, next) => {
+  // For Stripe webhook: capture raw body BEFORE json parsing (needed for signature verification)
+  app.use("/api/stripe/webhook", (req, _res, next) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       const rawBody = Buffer.concat(chunks);
       (req as typeof req & { rawBody: Buffer }).rawBody = rawBody;
-      // Manually parse JSON for webhook handler
-      try {
-        (req as typeof req & { body: unknown }).body = JSON.parse(rawBody.toString("utf-8"));
-      } catch {
-        (req as typeof req & { body: unknown }).body = {};
-      }
       next();
     });
     req.on("error", next);
@@ -54,7 +48,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
-  registerLemonSqueezyWebhook(app);
+  registerStripeWebhook(app);
   // Health check endpoint for Railway
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });

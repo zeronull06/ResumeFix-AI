@@ -6,22 +6,17 @@ import { registerOAuthRoutes } from "../server/_core/oauth";
 import { registerStorageProxy } from "../server/_core/storageProxy";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
-import { registerLemonSqueezyWebhook } from "../server/webhooks/lemonsqueezy";
+import { registerStripeWebhook } from "../server/webhooks/stripe";
 
 const app = express();
 
 // Webhook route: capture raw body BEFORE json parsing (needed for signature verification)
-app.use("/api/lemonsqueezy/webhook", (req, _res, next) => {
+app.use("/api/stripe/webhook", (req, _res, next) => {
   const chunks: Buffer[] = [];
   req.on("data", (chunk: Buffer) => chunks.push(chunk));
   req.on("end", () => {
     const rawBody = Buffer.concat(chunks);
     (req as typeof req & { rawBody: Buffer }).rawBody = rawBody;
-    try {
-      (req as typeof req & { body: unknown }).body = JSON.parse(rawBody.toString("utf-8"));
-    } catch {
-      (req as typeof req & { body: unknown }).body = {};
-    }
     next();
   });
   req.on("error", next);
@@ -32,7 +27,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 registerStorageProxy(app);
 registerOAuthRoutes(app);
-registerLemonSqueezyWebhook(app);
+registerStripeWebhook(app);
 
 // Health check
 app.get("/api/health", (_req, res) => {

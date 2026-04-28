@@ -67,7 +67,7 @@ export default function AnalyzePage() {
     if (file) handleFile(file);
   };
 
-  const handleSubmit = async () => {
+  const handleFreeAnalysis = async () => {
     if (resumeText.trim().length < 50) {
       toast.error("Please provide your resume (at least 50 characters)");
       return;
@@ -79,13 +79,35 @@ export default function AnalyzePage() {
 
     setIsCheckingOut(true);
     try {
-      // Step 1: Save draft
+      const draft = await saveDraft.mutateAsync({
+        resumeText: resumeText.trim(),
+        jobDescription: jobDescription.trim(),
+      });
+      navigate(`/results/${draft.accessToken}`);
+    } catch {
+      // errors handled by mutation onError
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
+
+  const handlePaidAnalysis = async () => {
+    if (resumeText.trim().length < 50) {
+      toast.error("Please provide your resume (at least 50 characters)");
+      return;
+    }
+    if (jobDescription.trim().length < 50) {
+      toast.error("Please provide the job description (at least 50 characters)");
+      return;
+    }
+
+    setIsCheckingOut(true);
+    try {
       const draft = await saveDraft.mutateAsync({
         resumeText: resumeText.trim(),
         jobDescription: jobDescription.trim(),
       });
 
-      // Step 2: Create Lemon Squeezy checkout
       const checkout = await createCheckout.mutateAsync({
         accessToken: draft.accessToken,
         origin: window.location.origin,
@@ -97,7 +119,7 @@ export default function AnalyzePage() {
       }
 
       if (checkout.checkoutUrl) {
-        window.location.href = checkout.checkoutUrl;
+        window.open(checkout.checkoutUrl, "_blank");
       }
     } catch {
       // errors handled by individual mutation onError
@@ -229,27 +251,45 @@ export default function AnalyzePage() {
           </div>
         </div>
 
-        {/* Analyze Button */}
-        <div className="mt-8 flex flex-col items-center gap-3">
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading || isCheckingOut || saveDraft.isPending}
-            className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white px-10 py-3 text-base font-semibold rounded-xl shadow-md transition-all"
-            size="lg"
-          >
-            {isCheckingOut || saveDraft.isPending ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                {saveDraft.isPending ? "Saving draft..." : "Redirecting to payment..."}
-              </>
-            ) : (
-              <>
-                <CreditCard className="w-5 h-5 mr-2" />
-                Get Full Analysis — $6.99
-              </>
-            )}
-          </Button>
-          <p className="text-xs text-gray-400">Secure payment via Lemon Squeezy · AI analyzes in ~20 seconds after payment</p>
+        {/* Action Buttons */}
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <Button
+              onClick={handleFreeAnalysis}
+              disabled={isLoading || isCheckingOut || saveDraft.isPending}
+              variant="outline"
+              className="px-8 py-3 text-base font-semibold border-gray-300 text-gray-700 hover:bg-gray-50"
+              size="lg"
+            >
+              {isCheckingOut && saveDraft.isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>Free Analysis</>
+              )}
+            </Button>
+            <Button
+              onClick={handlePaidAnalysis}
+              disabled={isLoading || isCheckingOut || createCheckout.isPending}
+              className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white px-8 py-3 text-base font-semibold rounded-xl shadow-md transition-all"
+              size="lg"
+            >
+              {isCheckingOut || createCheckout.isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  {createCheckout.isPending ? "Opening Stripe..." : "Processing..."}
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-5 h-5 mr-2" />
+                  Get Optimized Resume — $6.99
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-400">Free: Get ATS score & feedback · Paid: Get AI-optimized resume ready to submit</p>
         </div>
       </main>
     </div>
