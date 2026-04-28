@@ -55,6 +55,11 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerLemonSqueezyWebhook(app);
+  // Health check endpoint for Railway
+  app.get("/api/health", (_req, res) => {
+    res.json({ ok: true, timestamp: Date.now() });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",
