@@ -4,7 +4,11 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Upload, FileText, Briefcase, Sparkles, X, Loader2 } from "lucide-react";
+import { Upload, FileText, Briefcase, Sparkles, X, Loader2, CreditCard } from "lucide-react";
+
+function countWords(text: string): number {
+  return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+}
 
 export default function AnalyzePage() {
   const [, navigate] = useLocation();
@@ -12,19 +16,24 @@ export default function AnalyzePage() {
   const [jobDescription, setJobDescription] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const extractPdf = trpc.resume.extractPdf.useMutation();
-  const analyze = trpc.resume.analyze.useMutation({
-    onSuccess: (data) => {
-      navigate(`/results/${data.accessToken}`);
-    },
+  const saveDraft = trpc.resume.saveDraft.useMutation({
     onError: (err) => {
-      toast.error(err.message || "Analysis failed. Please try again.");
+      toast.error(err.message || "Failed to save. Please try again.");
+      setIsCheckingOut(false);
+    },
+  });
+  const createCheckout = trpc.payment.createCheckout.useMutation({
+    onError: (err) => {
+      toast.error(err.message || "Payment setup failed. Please try again.");
+      setIsCheckingOut(false);
     },
   });
 
-  const isLoading = extractPdf.isPending || analyze.isPending;
+  const isLoading = extractPdf.isPending;
 
   const handleFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -67,8 +76,38 @@ export default function AnalyzePage() {
       toast.error("Please provide the job description (at least 50 characters)");
       return;
     }
-    await analyze.mutateAsync({ resumeText: resumeText.trim(), jobDescription: jobDescription.trim() });
+
+    setIsCheckingOut(true);
+    try {
+      // Step 1: Save draft
+      const draft = await saveDraft.mutateAsync({
+        resumeText: resumeText.trim(),
+        jobDescription: jobDescription.trim(),
+      });
+
+      // Step 2: Create Lemon Squeezy checkout
+      const checkout = await createCheckout.mutateAsync({
+        accessToken: draft.accessToken,
+        origin: window.location.origin,
+      });
+
+      if (checkout.alreadyPaid) {
+        navigate(`/results/${draft.accessToken}`);
+        return;
+      }
+
+      if (checkout.checkoutUrl) {
+        window.location.href = checkout.checkoutUrl;
+      }
+    } catch {
+      // errors handled by individual mutation onError
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
+
+  const resumeWords = countWords(resumeText);
+  const jdWords = countWords(jobDescription);
 
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
@@ -81,13 +120,26 @@ export default function AnalyzePage() {
             </div>
             <span className="font-bold text-gray-900 text-lg">ResumeAI Optimizer</span>
           </a>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <CreditCard className="w-4 h-4" />
+            <span>Secure payment · $6.99</span>
+          </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Analyze Your Resume</h1>
-          <p className="text-gray-500">Upload your resume and paste the job description to get your ATS score and optimized resume</p>
+          <p className="text-gray-500">Upload your resume and paste the job description — get your ATS score and a fully optimized resume ready to submit</p>
+        </div>
+
+        {/* Test Card Notice */}
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-start gap-3">
+          <CreditCard className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Test Mode — Use this card to try payment</p>
+            <p className="text-xs text-amber-700 mt-0.5">Card number: <strong>4242 4242 4242 4242</strong> · Expiry: any future date · CVV: any 3 digits · Zip: any 5 digits</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -97,7 +149,6 @@ export default function AnalyzePage() {
               <FileText className="w-5 h-5 text-[#1a7a4a]" />
               <h2 className="font-semibold text-gray-900">Your Resume</h2>
             </div>
-
             <div
               className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors mb-4 ${
                 isDragging ? "border-[#1a7a4a] bg-green-50" : "border-gray-200 hover:border-[#1a7a4a] hover:bg-gray-50"
@@ -138,7 +189,6 @@ export default function AnalyzePage() {
                 </div>
               )}
             </div>
-
             <div className="relative mb-3">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200" />
@@ -147,14 +197,18 @@ export default function AnalyzePage() {
                 <span className="bg-white px-3 text-xs text-gray-400">or paste text below</span>
               </div>
             </div>
-
             <Textarea
               placeholder="Paste your resume text here..."
               value={resumeText}
               onChange={(e) => setResumeText(e.target.value)}
               className="min-h-[220px] text-sm resize-none border-gray-200 focus:border-[#1a7a4a] focus:ring-[#1a7a4a]"
             />
-            <div className="mt-1 text-right text-xs text-gray-400">{resumeText.length} chars</div>
+            <div className="mt-1 flex justify-between text-xs">
+              <span className={resumeWords > 0 && resumeWords < 100 ? "text-amber-500" : "text-transparent"}>
+                ⚠ Too short — aim for 300+ words
+              </span>
+              <span className="text-gray-400"><strong className="text-gray-600">{resumeWords}</strong> words · {resumeText.length} chars</span>
+            </div>
           </div>
 
           {/* Job Description */}
@@ -169,7 +223,9 @@ export default function AnalyzePage() {
               onChange={(e) => setJobDescription(e.target.value)}
               className="min-h-[340px] text-sm resize-none border-gray-200 focus:border-[#1a7a4a] focus:ring-[#1a7a4a]"
             />
-            <div className="mt-1 text-right text-xs text-gray-400">{jobDescription.length} chars</div>
+            <div className="mt-1 text-right text-xs text-gray-400">
+              <strong className="text-gray-600">{jdWords}</strong> words · {jobDescription.length} chars
+            </div>
           </div>
         </div>
 
@@ -177,27 +233,23 @@ export default function AnalyzePage() {
         <div className="mt-8 flex flex-col items-center gap-3">
           <Button
             onClick={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || isCheckingOut || saveDraft.isPending}
             className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white px-10 py-3 text-base font-semibold rounded-xl shadow-md transition-all"
             size="lg"
           >
-            {analyze.isPending ? (
+            {isCheckingOut || saveDraft.isPending ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Analyzing with AI...
+                {saveDraft.isPending ? "Saving draft..." : "Redirecting to payment..."}
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5 mr-2" />
-                Analyze My Resume
+                <CreditCard className="w-5 h-5 mr-2" />
+                Get Full Analysis — $6.99
               </>
             )}
           </Button>
-          {analyze.isPending && (
-            <p className="text-sm text-gray-500 animate-pulse">
-              GPT-4o-mini is analyzing your resume... this may take 10–20 seconds
-            </p>
-          )}
+          <p className="text-xs text-gray-400">Secure payment via Lemon Squeezy · AI analyzes in ~20 seconds after payment</p>
         </div>
       </main>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import {
   AlertCircle, TrendingUp, Loader2, RefreshCw,
 } from "lucide-react";
 
-// ─── PDF Download via browser print ──────────────────────────────────────────
+// PDF Download via browser print
 async function downloadAsPdf(markdownContent: string) {
   const { marked } = await import("marked");
   const html = await marked(markdownContent);
@@ -21,11 +21,11 @@ h2{font-size:10pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
 h3{font-size:11pt;font-weight:700;margin-top:8pt;margin-bottom:2pt}
 p{margin-bottom:5pt;color:#333}ul{padding-left:16pt;margin-bottom:6pt}li{margin-bottom:3pt;color:#333}
 strong{font-weight:700}@media print{body{padding:0}@page{margin:2cm}}</style></head>
-<body>${html}<script>window.onload=function(){setTimeout(function(){window.print();window.close();},300);}</script></body></html>`);
+<body>${html}<script>window.onload=function(){setTimeout(function(){window.print();window.close();},300);}\x3c/script></body></html>`);
   printWindow.document.close();
 }
 
-// ─── Score Circle ─────────────────────────────────────────────────────────────
+// Score Circle
 function ScoreCircle({ score }: { score: number }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
@@ -68,49 +68,87 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function renderInline(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code style='background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:0.85em'>$1</code>");
-}
-
+// Safe resume preview using innerHTML to avoid React insertBefore error
 function ResumePreview({ markdown, keywords }: { markdown: string; keywords: string[] }) {
-  const highlight = (text: string) => {
-    if (!keywords.length) return text;
-    const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    return text.replace(new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
-      `<mark style="background:#1a7a4a20;color:#1a7a4a;padding:0 2px;border-radius:3px;font-weight:600">$1</mark>`);
-  };
-  return (
-    <div className="font-serif text-gray-800 leading-relaxed text-sm space-y-1">
-      {markdown.split("\n").map((line, i) => {
-        if (line.startsWith("# ")) return <h1 key={i} className="text-xl font-bold text-center text-gray-900 uppercase tracking-wide mb-1">{line.slice(2)}</h1>;
-        if (line.startsWith("## ")) return <h2 key={i} className="text-xs font-bold uppercase tracking-widest text-gray-900 border-b border-[#1a7a4a] pb-1 mt-4 mb-2">{line.slice(3)}</h2>;
-        if (line.startsWith("### ")) return <h3 key={i} className="font-bold text-gray-900 text-sm mt-2">{line.slice(4)}</h3>;
-        if (line.startsWith("- ") || line.startsWith("* ")) return (
-          <div key={i} className="flex gap-2 ml-4">
-            <span className="text-gray-400 mt-0.5 shrink-0">•</span>
-            <p className="text-gray-700 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: highlight(renderInline(line.slice(2))) }} />
-          </div>
-        );
-        if (line.trim() === "") return <div key={i} className="h-1" />;
-        return <p key={i} className="text-gray-700 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: highlight(renderInline(line)) }} />;
-      })}
-    </div>
-  );
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const highlight = (text: string) => {
+      if (!keywords.length) return text;
+      const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      return text.replace(
+        new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
+        `<mark style="background:#1a7a4a20;color:#1a7a4a;padding:0 2px;border-radius:3px;font-weight:600">$1</mark>`
+      );
+    };
+
+    const renderInline = (text: string) =>
+      text
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+    const lines = markdown.split("\n");
+    const html = lines.map((line) => {
+      if (line.startsWith("# ")) {
+        return `<h1 style="font-size:1.2rem;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${highlight(renderInline(line.slice(2)))}</h1>`;
+      }
+      if (line.startsWith("## ")) {
+        return `<h2 style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;border-bottom:1.5px solid #1a7a4a;padding-bottom:3px;margin-top:16px;margin-bottom:8px;color:#111">${highlight(renderInline(line.slice(3)))}</h2>`;
+      }
+      if (line.startsWith("### ")) {
+        return `<h3 style="font-weight:700;font-size:0.85rem;margin-top:8px;margin-bottom:2px;color:#111">${highlight(renderInline(line.slice(4)))}</h3>`;
+      }
+      if (line.startsWith("- ") || line.startsWith("* ")) {
+        return `<div style="display:flex;gap:8px;margin-left:16px;margin-bottom:2px"><span style="color:#aaa;flex-shrink:0;margin-top:2px">\u2022</span><p style="font-size:0.75rem;color:#444;line-height:1.5;margin:0">${highlight(renderInline(line.slice(2)))}</p></div>`;
+      }
+      if (line.trim() === "") {
+        return `<div style="height:4px"></div>`;
+      }
+      return `<p style="font-size:0.75rem;color:#444;line-height:1.5;margin-bottom:2px">${highlight(renderInline(line))}</p>`;
+    }).join("");
+
+    containerRef.current.innerHTML = html;
+  }, [markdown, keywords]);
+
+  return <div ref={containerRef} className="font-serif text-gray-800 leading-relaxed" />;
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// Main Page
 export default function ResultsPage() {
   const { accessToken } = useParams<{ accessToken: string }>();
   const [, navigate] = useLocation();
   const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const utils = trpc.useUtils();
 
   const { data, isLoading, error } = trpc.resume.getResult.useQuery(
     { accessToken: accessToken ?? "" },
     { enabled: !!accessToken, retry: 2 }
   );
+
+  const analyze = trpc.resume.analyze.useMutation({
+    onSuccess: () => {
+      void utils.resume.getResult.invalidate({ accessToken: accessToken ?? "" });
+      setIsAnalyzing(false);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Analysis failed. Please try again.");
+      setIsAnalyzing(false);
+    },
+  });
+
+  // When payment returns with ?payment=success and status is still pending, trigger AI
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentSuccess = params.get("payment") === "success";
+    if (paymentSuccess && data && (data.status === "pending" || data.status === "failed") && !isAnalyzing && !analyze.isPending) {
+      setIsAnalyzing(true);
+      analyze.mutate({ accessToken: accessToken ?? "" });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.status, accessToken]);
 
   const handleCopy = () => {
     if (!data?.optimizedResume) return;
@@ -126,11 +164,18 @@ export default function ResultsPage() {
     finally { setIsPdfLoading(false); }
   };
 
-  if (isLoading) return (
+  if (isLoading || isAnalyzing || (data && data.status === "processing")) return (
     <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
       <div className="text-center space-y-4">
         <Loader2 className="w-10 h-10 animate-spin text-[#1a7a4a] mx-auto" />
-        <p className="text-gray-600 font-medium">Loading your results...</p>
+        <p className="text-gray-600 font-medium">
+          {isAnalyzing || (data && data.status === "processing")
+            ? "AI is analyzing your resume... this may take 20\u201330 seconds"
+            : "Loading your results..."}
+        </p>
+        {(isAnalyzing || (data && data.status === "processing")) && (
+          <p className="text-xs text-gray-400">Please wait, do not close this page</p>
+        )}
       </div>
     </div>
   );
@@ -143,6 +188,19 @@ export default function ResultsPage() {
         <p className="text-gray-500 text-sm">This analysis may have expired or the link is invalid.</p>
         <Button onClick={() => navigate("/analyze")} className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white">
           Start New Analysis
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (data.status === "failed") return (
+    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+      <div className="text-center space-y-4 max-w-sm">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+        <h2 className="text-xl font-bold text-gray-900">Analysis Failed</h2>
+        <p className="text-gray-500 text-sm">Something went wrong during AI processing. Please try again.</p>
+        <Button onClick={() => navigate("/analyze")} className="bg-[#1a7a4a] hover:bg-[#155f3a] text-white">
+          Try Again
         </Button>
       </div>
     </div>
@@ -180,8 +238,7 @@ export default function ResultsPage() {
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-
-          {/* ── Left Panel ── */}
+          {/* Left Panel: Scores */}
           <div className="space-y-4">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -192,7 +249,6 @@ export default function ResultsPage() {
               </div>
               {data.summary && <p className="text-sm text-gray-600 text-center leading-relaxed">{data.summary as string}</p>}
             </div>
-
             {scoreBreakdown && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                 <h3 className="font-semibold text-gray-900 mb-4 text-sm">Score Breakdown</h3>
@@ -204,7 +260,6 @@ export default function ResultsPage() {
                 </div>
               </div>
             )}
-
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-4 text-sm">Post-Optimization Details</h3>
               {missingKeywords.length > 0 && (
@@ -234,13 +289,12 @@ export default function ResultsPage() {
                 </div>
               )}
             </div>
-
             <Button variant="outline" className="w-full border-gray-200 text-gray-600 hover:text-gray-900 text-sm" onClick={() => navigate("/analyze")}>
               <RefreshCw className="w-4 h-4 mr-2" /> Analyze Another Resume
             </Button>
           </div>
 
-          {/* ── Right Panel: Optimized Resume ── */}
+          {/* Right Panel: Optimized Resume */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
@@ -269,7 +323,6 @@ export default function ResultsPage() {
               </div>
             </div>
           </div>
-
         </div>
       </main>
     </div>
