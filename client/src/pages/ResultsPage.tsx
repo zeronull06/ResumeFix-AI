@@ -139,16 +139,21 @@ export default function ResultsPage() {
     },
   });
 
-  // When payment returns with ?payment=success and status is still pending, trigger AI
+  // Auto-trigger analysis: free analysis (no payment) or after payment confirmed
   useEffect(() => {
+    if (!data || analyze.isPending || isAnalyzing) return;
+    
+    // Check if payment was successful
     const params = new URLSearchParams(window.location.search);
     const paymentSuccess = params.get("payment") === "success";
-    if (paymentSuccess && data && (data.status === "pending" || data.status === "failed") && !isAnalyzing && !analyze.isPending) {
+    
+    // Trigger analysis if: (1) free analysis (no payment needed), OR (2) payment confirmed
+    if ((data.status === "pending" || data.status === "failed") && !isAnalyzing) {
       setIsAnalyzing(true);
       analyze.mutate({ accessToken: accessToken ?? "" });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.status, accessToken]);
+  }, [data?.status, accessToken])
 
   const handleCopy = () => {
     if (!data?.optimizedResume) return;

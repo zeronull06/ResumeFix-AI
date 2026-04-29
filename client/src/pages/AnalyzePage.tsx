@@ -119,7 +119,8 @@ export default function AnalyzePage() {
       }
 
       if (checkout.checkoutUrl) {
-        window.open(checkout.checkoutUrl, "_blank");
+        // Redirect to Paddle checkout (not open in new tab)
+        window.location.href = checkout.checkoutUrl;
       }
     } catch {
       // errors handled by individual mutation onError
