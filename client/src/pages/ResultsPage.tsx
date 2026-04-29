@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -68,51 +68,54 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-// Safe resume preview using innerHTML to avoid React insertBefore error
+// Resume preview using React components (no innerHTML to avoid React conflicts)
 function ResumePreview({ markdown, keywords }: { markdown: string; keywords: string[] }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const renderHighlight = (text: string) => {
+    if (!keywords.length) return text;
+    const parts = text.split(new RegExp(`(\\b${keywords.map(k => k.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")).join("|")}\\b)`, "gi"));
+    return parts.map((part, i) => 
+      keywords.some(k => k.toLowerCase() === part.toLowerCase())
+        ? <mark key={i} className="bg-[#1a7a4a20] text-[#1a7a4a] px-0.5 rounded font-semibold">{part}</mark>
+        : part
+    );
+  };
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const highlight = (text: string) => {
-      if (!keywords.length) return text;
-      const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-      return text.replace(
-        new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
-        `<mark style="background:#1a7a4a20;color:#1a7a4a;padding:0 2px;border-radius:3px;font-weight:600">$1</mark>`
-      );
-    };
-
-    const renderInline = (text: string) =>
-      text
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-    const lines = markdown.split("\n");
-    const html = lines.map((line) => {
-      if (line.startsWith("# ")) {
-        return `<h1 style="font-size:1.2rem;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${highlight(renderInline(line.slice(2)))}</h1>`;
+  const renderInline = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i}>{renderHighlight(part.slice(2, -2))}</strong>;
       }
-      if (line.startsWith("## ")) {
-        return `<h2 style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;border-bottom:1.5px solid #1a7a4a;padding-bottom:3px;margin-top:16px;margin-bottom:8px;color:#111">${highlight(renderInline(line.slice(3)))}</h2>`;
+      if (part.startsWith("*") && part.endsWith("*")) {
+        return <em key={i}>{renderHighlight(part.slice(1, -1))}</em>;
       }
-      if (line.startsWith("### ")) {
-        return `<h3 style="font-weight:700;font-size:0.85rem;margin-top:8px;margin-bottom:2px;color:#111">${highlight(renderInline(line.slice(4)))}</h3>`;
-      }
-      if (line.startsWith("- ") || line.startsWith("* ")) {
-        return `<div style="display:flex;gap:8px;margin-left:16px;margin-bottom:2px"><span style="color:#aaa;flex-shrink:0;margin-top:2px">\u2022</span><p style="font-size:0.75rem;color:#444;line-height:1.5;margin:0">${highlight(renderInline(line.slice(2)))}</p></div>`;
-      }
-      if (line.trim() === "") {
-        return `<div style="height:4px"></div>`;
-      }
-      return `<p style="font-size:0.75rem;color:#444;line-height:1.5;margin-bottom:2px">${highlight(renderInline(line))}</p>`;
-    }).join("");
+      return <span key={i}>{renderHighlight(part)}</span>;
+    });
+  };
 
-    containerRef.current.innerHTML = html;
-  }, [markdown, keywords]);
-
-  return <div ref={containerRef} className="font-serif text-gray-800 leading-relaxed" />;
+  const lines = markdown.split("\n");
+  return (
+    <div className="font-serif text-gray-800 leading-relaxed space-y-1">
+      {lines.map((line, idx) => {
+        if (line.startsWith("# ")) {
+          return <h1 key={idx} className="text-lg font-bold text-center uppercase tracking-wider mb-1">{renderInline(line.slice(2))}</h1>;
+        }
+        if (line.startsWith("## ")) {
+          return <h2 key={idx} className="text-xs font-bold uppercase tracking-widest border-b border-[#1a7a4a] pb-0.5 mt-4 mb-2 text-gray-900">{renderInline(line.slice(3))}</h2>;
+        }
+        if (line.startsWith("### ")) {
+          return <h3 key={idx} className="font-bold text-sm mt-2 mb-0.5 text-gray-900">{renderInline(line.slice(4))}</h3>;
+        }
+        if (line.startsWith("- ") || line.startsWith("* ")) {
+          return <div key={idx} className="flex gap-2 ml-4 mb-0.5"><span className="text-gray-400 flex-shrink-0 mt-0.5">•</span><p className="text-xs text-gray-600 leading-relaxed m-0">{renderInline(line.slice(2))}</p></div>;
+        }
+        if (line.trim() === "") {
+          return <div key={idx} className="h-1" />;
+        }
+        return <p key={idx} className="text-xs text-gray-600 leading-relaxed mb-0.5">{renderInline(line)}</p>;
+      })}
+    </div>
+  );
 }
 
 // Main Page
