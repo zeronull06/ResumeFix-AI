@@ -43,4 +43,26 @@ app.use(
   })
 );
 
+// Global error handler — catch any unhandled errors and return JSON
+app.use(
+  (
+    err: Error,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error("[Express Error]", err);
+
+    // Ensure we always respond with JSON
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: {
+          message: err.message || "Internal server error",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      });
+    }
+  }
+);
+
 export default app;
